@@ -18,7 +18,7 @@ rewriteImports="${SCRIPT_DIR}/rewrite-imports.js"
 # Setup shared options for esbuild
 sharedOptions=()
 sharedOptions+=("--platform=browser")
-sharedOptions+=("--target=es2019")
+sharedOptions+=("--target=es2016")
 
 # Generate actual builds
 # ESM

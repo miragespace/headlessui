@@ -4,7 +4,7 @@
 
 <p align="center">
   A set of completely unstyled, fully accessible UI components, designed to integrate
-  beautifully with Tailwind CSS.
+  beautifully with Tailwind CSS. <br/ ><b>! This is a fork that changes the esbuild target to ES2016 !</b>
 </p>
 
 ---
