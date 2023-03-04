@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing yet!
 
+## [1.7.12] - 2023-03-03
+
+### Fixed
+
+- Enable native label behavior for `<Switch>` where possible ([#2265](https://github.com/tailwindlabs/headlessui/pull/2265))
+- Allow root containers from the `Dialog` component in the `FocusTrap` component ([#2322](https://github.com/tailwindlabs/headlessui/pull/2322))
+- Cleanup internal TypeScript types ([#2329](https://github.com/tailwindlabs/headlessui/pull/2329))
+- Fix restore focus to buttons in Safari, when `Dialog` component closes ([#2326](https://github.com/tailwindlabs/headlessui/pull/2326))
+- Ensure hooks in the `FocusTrap` component only apply when mounted ([#2331](https://github.com/tailwindlabs/headlessui/pull/2331))
+
 ## [1.7.11] - 2023-02-24
 
 ### Fixed
@@ -421,7 +431,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Everything!
 
-[unreleased]: https://github.com/tailwindlabs/headlessui/compare/@headlessui/vue@v1.7.11...HEAD
+[unreleased]: https://github.com/tailwindlabs/headlessui/compare/@headlessui/vue@v1.7.12...HEAD
+[1.7.12]: https://github.com/tailwindlabs/headlessui/compare/@headlessui/vue@v1.7.11...@headlessui/vue@v1.7.12
 [1.7.11]: https://github.com/tailwindlabs/headlessui/compare/@headlessui/vue@v1.7.10...@headlessui/vue@v1.7.11
 [1.7.10]: https://github.com/tailwindlabs/headlessui/compare/@headlessui/vue@v1.7.9...@headlessui/vue@v1.7.10
 [1.7.9]: https://github.com/tailwindlabs/headlessui/compare/@headlessui/vue@v1.7.8...@headlessui/vue@v1.7.9

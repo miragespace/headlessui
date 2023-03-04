@@ -65,8 +65,12 @@ function GroupFn<TTag extends ElementType = typeof DEFAULT_GROUP_TAG>(
       <LabelProvider
         name="Switch.Label"
         props={{
-          onClick() {
+          htmlFor: context.switch?.id,
+          onClick(event: React.MouseEvent<HTMLLabelElement>) {
             if (!switchElement) return
+            if (event.currentTarget.tagName === 'LABEL') {
+              event.preventDefault()
+            }
             switchElement.click()
             switchElement.focus({ preventScroll: true })
           },
@@ -92,26 +96,24 @@ interface SwitchRenderPropArg {
   checked: boolean
 }
 type SwitchPropsWeControl =
+  | 'aria-checked'
+  | 'aria-describedby'
+  | 'aria-labelledby'
   | 'role'
   | 'tabIndex'
-  | 'aria-checked'
-  | 'aria-labelledby'
-  | 'aria-describedby'
-  | 'onClick'
-  | 'onKeyUp'
-  | 'onKeyPress'
 
 export type SwitchProps<TTag extends ElementType> = Props<
   TTag,
   SwitchRenderPropArg,
-  SwitchPropsWeControl | 'checked' | 'defaultChecked' | 'onChange' | 'name' | 'value'
-> & {
-  checked?: boolean
-  defaultChecked?: boolean
-  onChange?(checked: boolean): void
-  name?: string
-  value?: string
-}
+  SwitchPropsWeControl,
+  {
+    checked?: boolean
+    defaultChecked?: boolean
+    onChange?(checked: boolean): void
+    name?: string
+    value?: string
+  }
+>
 
 function SwitchFn<TTag extends ElementType = typeof DEFAULT_SWITCH_TAG>(
   props: SwitchProps<TTag>,

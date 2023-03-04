@@ -8,9 +8,10 @@ import {
   watch,
 
   // Types
-  PropType,
   Fragment,
+  PropType,
   Ref,
+  watchEffect,
 } from 'vue'
 import { render } from '../../utils/render'
 import { Hidden, Features as HiddenFeatures } from '../../internal/hidden'
@@ -21,6 +22,27 @@ import { useTabDirection, Direction as TabDirection } from '../../hooks/use-tab-
 import { getOwnerDocument } from '../../utils/owner'
 import { useEventListener } from '../../hooks/use-event-listener'
 import { microTask } from '../../utils/micro-task'
+
+type Containers =
+  // Lazy resolved containers
+  | (() => Iterable<HTMLElement>)
+
+  // List of containers
+  | Ref<Set<Ref<HTMLElement | null>>>
+
+function resolveContainers(containers?: Containers): Set<HTMLElement> {
+  if (!containers) return new Set<HTMLElement>()
+  if (typeof containers === 'function') return new Set(containers())
+
+  let all = new Set<HTMLElement>()
+  for (let container of containers.value) {
+    let el = dom(container)
+    if (el instanceof HTMLElement) {
+      all.add(el)
+    }
+  }
+  return all
+}
 
 enum Features {
   /** No features enabled for the focus trap. */
@@ -50,7 +72,7 @@ export let FocusTrap = Object.assign(
       initialFocus: { type: Object as PropType<HTMLElement | null>, default: null },
       features: { type: Number as PropType<Features>, default: Features.All },
       containers: {
-        type: Object as PropType<Ref<Set<Ref<HTMLElement | null>>>>,
+        type: [Object, Function] as PropType<Containers>,
         default: ref(new Set()),
       },
     },
@@ -62,13 +84,17 @@ export let FocusTrap = Object.assign(
 
       let ownerDocument = computed(() => getOwnerDocument(container))
 
+      let mounted = ref(false)
+      onMounted(() => (mounted.value = true))
+      onUnmounted(() => (mounted.value = false))
+
       useRestoreFocus(
         { ownerDocument },
-        computed(() => Boolean(props.features & Features.RestoreFocus))
+        computed(() => mounted.value && Boolean(props.features & Features.RestoreFocus))
       )
       let previousActiveElement = useInitialFocus(
         { ownerDocument, container, initialFocus: computed(() => props.initialFocus) },
-        computed(() => Boolean(props.features & Features.InitialFocus))
+        computed(() => mounted.value && Boolean(props.features & Features.InitialFocus))
       )
       useFocusLock(
         {
@@ -77,7 +103,7 @@ export let FocusTrap = Object.assign(
           containers: props.containers,
           previousActiveElement,
         },
-        computed(() => Boolean(props.features & Features.FocusLock))
+        computed(() => mounted.value && Boolean(props.features & Features.FocusLock))
       )
 
       let direction = useTabDirection()
@@ -110,8 +136,9 @@ export let FocusTrap = Object.assign(
       }
 
       function handleBlur(e: FocusEvent) {
-        let allContainers = new Set(props.containers?.value)
-        allContainers.add(container)
+        if (!mounted.value) return
+        let allContainers = resolveContainers(props.containers)
+        if (dom(container) instanceof HTMLElement) allContainers.add(dom(container)!)
 
         let relatedTarget = e.relatedTarget
         if (!(relatedTarget instanceof HTMLElement)) return
@@ -124,7 +151,7 @@ export let FocusTrap = Object.assign(
         // Blur is triggered due to focus on relatedTarget, and the relatedTarget is not inside any
         // of the dialog containers. In other words, let's move focus back in!
         if (!contains(allContainers, relatedTarget)) {
-          // Was the blur invoke via the keyboard? Redirect to the next in line.
+          // Was the blur invoked via the keyboard? Redirect to the next in line.
           if (recentlyUsedTabKey.value) {
             focusIn(
               dom(container) as HTMLElement,
@@ -136,7 +163,7 @@ export let FocusTrap = Object.assign(
             )
           }
 
-          // It was invoke via something else (e.g.: click, programmatically, ...). Redirect to the
+          // It was invoked via something else (e.g.: click, programmatically, ...). Redirect to the
           // previous active item in the FocusTrap
           else if (e.target instanceof HTMLElement) {
             focusElement(e.target)
@@ -181,44 +208,83 @@ export let FocusTrap = Object.assign(
   { features: Features }
 )
 
+let history: HTMLElement[] = []
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  function handle(e: Event) {
+    if (!(e.target instanceof HTMLElement)) return
+    if (e.target === document.body) return
+    if (history[0] === e.target) return
+
+    history.unshift(e.target)
+
+    // Filter out DOM Nodes that don't exist anymore
+    history = history.filter((x) => x != null && x.isConnected)
+    history.splice(10) // Only keep the 10 most recent items
+  }
+
+  window.addEventListener('click', handle, { capture: true })
+  window.addEventListener('mousedown', handle, { capture: true })
+  window.addEventListener('focus', handle, { capture: true })
+
+  document.body.addEventListener('click', handle, { capture: true })
+  document.body.addEventListener('mousedown', handle, { capture: true })
+  document.body.addEventListener('focus', handle, { capture: true })
+}
+
+function useRestoreElement(enabled: Ref<boolean>) {
+  let localHistory = ref<HTMLElement[]>(history.slice())
+
+  watch(
+    [enabled],
+    ([newEnabled], [oldEnabled]) => {
+      // We are disabling the restore element, so we need to clear it.
+      if (oldEnabled === true && newEnabled === false) {
+        // However, let's schedule it in a microTask, so that we can still read the value in the
+        // places where we are restoring the focus.
+        microTask(() => {
+          localHistory.value.splice(0)
+        })
+      }
+
+      // We are enabling the restore element, so we need to set it to the last "focused" element.
+      else if (oldEnabled === false && newEnabled === true) {
+        localHistory.value = history.slice()
+      }
+    },
+    { flush: 'post' }
+  )
+
+  // We want to return the last element that is still connected to the DOM, so we can restore the
+  // focus to it.
+  return () => {
+    return localHistory.value.find((x) => x != null && x.isConnected) ?? null
+  }
+}
+
 function useRestoreFocus(
   { ownerDocument }: { ownerDocument: Ref<Document | null> },
   enabled: Ref<boolean>
 ) {
-  let restoreElement = ref<HTMLElement | null>(null)
-
-  function captureFocus() {
-    if (restoreElement.value) return
-    restoreElement.value = ownerDocument.value?.activeElement as HTMLElement
-  }
+  let getRestoreElement = useRestoreElement(enabled)
 
   // Restore the focus to the previous element
-  function restoreFocusIfNeeded() {
-    if (!restoreElement.value) return
-    focusElement(restoreElement.value)
-    restoreElement.value = null
-  }
-
   onMounted(() => {
-    watch(
-      enabled,
-      (newValue, prevValue) => {
-        if (newValue === prevValue) return
+    watchEffect(
+      () => {
+        if (enabled.value) return
 
-        if (newValue) {
-          // The FocusTrap has become enabled which means we're going to move the focus into the trap
-          // We need to capture the current focus before we do that so we can restore it when done
-          captureFocus()
-        } else {
-          restoreFocusIfNeeded()
+        if (ownerDocument.value?.activeElement === ownerDocument.value?.body) {
+          focusElement(getRestoreElement())
         }
       },
-      { immediate: true }
+      { flush: 'post' }
     )
   })
 
   // Restore the focus when we unmount the component
-  onUnmounted(restoreFocusIfNeeded)
+  onUnmounted(() => {
+    focusElement(getRestoreElement())
+  })
 }
 
 function useInitialFocus(
@@ -307,7 +373,7 @@ function useFocusLock(
   }: {
     ownerDocument: Ref<Document | null>
     container: Ref<HTMLElement | null>
-    containers: Ref<Set<Ref<HTMLElement | null>>>
+    containers: Containers
     previousActiveElement: Ref<HTMLElement | null>
   },
   enabled: Ref<boolean>
@@ -319,8 +385,8 @@ function useFocusLock(
     (event) => {
       if (!enabled.value) return
 
-      let allContainers = new Set(containers?.value)
-      allContainers.add(container)
+      let allContainers = resolveContainers(containers)
+      if (dom(container) instanceof HTMLElement) allContainers.add(dom(container)!)
 
       let previous = previousActiveElement.value
       if (!previous) return
@@ -344,9 +410,9 @@ function useFocusLock(
   )
 }
 
-function contains(containers: Set<Ref<HTMLElement | null>>, element: HTMLElement) {
+function contains(containers: Set<HTMLElement>, element: HTMLElement) {
   for (let container of containers) {
-    if (container.value?.contains(element)) return true
+    if (container.contains(element)) return true
   }
 
   return false

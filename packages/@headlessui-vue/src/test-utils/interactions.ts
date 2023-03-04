@@ -1,8 +1,5 @@
 import { fireEvent } from '@testing-library/dom'
-import { disposables } from '../utils/disposables'
 import { pointer } from './fake-pointer'
-
-let d = disposables()
 
 function nextFrame(cb: Function): void {
   setImmediate(() =>
@@ -282,7 +279,11 @@ export async function focus(element: Document | Element | Window | Node | null) 
   try {
     if (element === null) return expect(element).not.toBe(null)
 
-    fireEvent.focus(element)
+    if (element instanceof HTMLElement) {
+      element.focus()
+    } else {
+      fireEvent.focus(element)
+    }
 
     await new Promise(nextFrame)
   } catch (err) {
